@@ -1,0 +1,70 @@
+# KinCony KC868-A16 — pressure sensor signal check.
+# LEFOO T2000, 0–100 PSI, 4–20 mA, on analog A1 (GPIO36).
+# Wiring is in WIRING.md. This replaces the switch page until that file is flashed again.
+#
+# Open air, powered: about 0.60 V and 4 mA, near 0 psi.
+# Nothing connected, or an open loop: about 0 V, and the psi reading goes negative.
+
+esphome:
+  name: kc868-a16
+  friendly_name: KC868-A16
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+web_server:
+  port: 80
+  version: 2
+  local: true
+
+sensor:
+  - platform: adc
+    pin: GPIO36
+    name: "Pressure loop voltage"
+    id: pressure_voltage
+    attenuation: 12db
+    update_interval: 1s
+    samples: 10
+    accuracy_decimals: 3
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+  - platform: template
+    name: "Pressure loop current"
+    accuracy_decimals: 2
+    unit_of_measurement: mA
+    state_class: measurement
+    update_interval: 1s
+    lambda: |-
+      if (isnan(id(pressure_voltage).state)) return NAN;
+      // A1's shunt is 150 ohms. Milliamps = volts / 0.150.
+      return id(pressure_voltage).state / 0.150f;
+  - platform: copy
+    source_id: pressure_voltage
+    name: "Water pressure"
+    accuracy_decimals: 1
+    unit_of_measurement: psi
+    device_class: pressure
+    state_class: measurement
+    filters:
+      # 4 mA = 0 psi, 20 mA = 100 psi.
+      - lambda: |-
+          float ma = x / 0.150f;
+          return (ma - 4.0f) * (100.0f / 16.0f);

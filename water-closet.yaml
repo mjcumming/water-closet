@@ -1,0 +1,262 @@
+# First operational candidate, October 6, 2026. See DESIGN.md, October 6 control implementation, before flashing.
+# Bench files remain kc868-a16*.yaml. This file has its own build directory.
+# Input assignment follows October 6 WIRING.md. Facing the knob, left is On and right is Auto.
+# OUT1–3 are the pump, tank, and UV contactors. OUT4–5 are the flush valves.
+# OUT9–12 are the pump, tank, spin-filter-flush, and UV-button LEDs.
+
+substitutions:
+  device_name: kc868-a16
+  tank_on_pin: "0"       # IN1, tank On (left, facing knob)
+  tank_auto_pin: "1"     # IN2, tank Auto (right, facing knob)
+  pump_on_pin: "2"       # IN3, pump On (left, facing knob)
+  pump_auto_pin: "3"     # IN4, pump Auto (right, facing knob)
+
+esphome:
+  name: ${device_name}
+  friendly_name: Water Closet
+  build_path: build/water-closet
+  includes:
+    # Prepend the type declarations before generated global storage; the second
+    # entry copies the header into the build. Its pragma once handles both includes.
+    - <water_closet_control.h>
+    - water_closet_control.h
+    - <water_closet_monitoring.h>
+    - water_closet_monitoring.h
+  on_boot:
+    priority: -100
+    then:
+      - delay: 1s
+      - lambda: |-
+          id(controls_ready) = true;
+          // A button held through boot is not a fresh flush request.
+          id(spin_button_armed) = !id(spin_flush_button).state;
+          id(system_button_armed) = !id(system_flush_button).state;
+      - script.execute: apply_control
+  on_shutdown:
+    then:
+      - switch.turn_off: spin_flush_valve
+      - switch.turn_off: system_flush_valve
+      - switch.turn_off: tank_contactor
+      - switch.turn_off: uv_contactor
+      - switch.turn_off: pump_contactor
+      - switch.turn_off: pump_indicator
+      - switch.turn_off: tank_indicator
+      - switch.turn_off: spin_flush_indicator
+      - switch.turn_off: system_flush_indicator
+      - switch.turn_off: unused_out6
+      - switch.turn_off: unused_out7
+      - switch.turn_off: unused_out8
+      - switch.turn_off: unused_out13
+      - switch.turn_off: unused_out14
+      - switch.turn_off: unused_out15
+      - switch.turn_off: unused_out16
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  reboot_timeout: 0s
+
+logger:
+  level: INFO
+
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+web_server:
+  port: 80
+  version: 2
+  local: false
+  js_url: ""
+  css_url: ""
+  js_include: web/dashboard.js
+  css_include: web/dashboard.css
+  log: false
+  include_internal: false
+
+packages:
+  board: !include firmware/board.yaml
+  settings: !include firmware/settings.yaml
+  monitoring: !include firmware/monitoring.yaml
+  bench: !include firmware/bench.yaml
+  health: !include firmware/health.yaml
+
+globals:
+  - id: selected_mode
+    type: int
+    restore_value: yes
+    initial_value: "2"
+  - id: bench_test
+    type: water_closet::BenchTest
+    restore_value: no
+  - id: controller
+    type: water_closet::Controller
+    restore_value: no
+  - id: local_selectors
+    type: water_closet::LocalSelectors
+    restore_value: no
+  - id: controls_ready
+    type: bool
+    initial_value: "false"
+  - id: flush_request
+    type: water_closet::Request
+    initial_value: water_closet::Request::NONE
+  - id: spin_button_armed
+    type: bool
+    initial_value: "false"
+  - id: system_button_armed
+    type: bool
+    initial_value: "false"
+  - id: last_output_refresh
+    type: uint32_t
+    initial_value: "0"
+
+interval:
+  - interval: 100ms
+    then:
+      - script.execute: apply_control
+
+script:
+  - id: apply_control
+    mode: single
+    then:
+      - lambda: |-
+          using namespace water_closet;
+          if (!id(controls_ready)) {
+            id(flush_request) = Request::NONE;
+            return;
+          }
+          // One writer owns all sixteen outputs, in normal operation and bench testing.
+          switch_::Switch *outputs[] = {
+            id(pump_contactor), id(tank_contactor), id(uv_contactor),
+            id(spin_flush_valve), id(system_flush_valve), id(unused_out6),
+            id(unused_out7), id(unused_out8), id(pump_indicator), id(tank_indicator),
+            id(spin_flush_indicator), id(system_flush_indicator), id(unused_out13),
+            id(unused_out14), id(unused_out15), id(unused_out16)
+          };
+          const uint32_t now = millis();
+          const bool refresh = now - id(last_output_refresh) >= 1000;
+          if (refresh) id(last_output_refresh) = now;
+          auto write_outputs = [&](uint16_t mask) {
+            // Remove all OFF commands first; pump is first when enabling equipment.
+            for (int channel = 15; channel >= 0; --channel)
+              if (!(mask & (1u << channel)) && (refresh || outputs[channel]->state))
+                outputs[channel]->turn_off();
+            for (unsigned channel = 0; channel < 16; ++channel)
+              if ((mask & (1u << channel)) && (refresh || !outputs[channel]->state))
+                outputs[channel]->turn_on();
+          };
+          if (id(bench_test).active()) {
+            id(flush_request) = Request::NONE;
+            write_outputs(id(bench_test).mask());
+            return;
+          }
+          Inputs in;
+          in.ready = id(controls_ready) &&
+              id(pump_selector_on).has_state() && id(pump_selector_auto).has_state() &&
+              id(tank_selector_on).has_state() && id(tank_selector_auto).has_state() &&
+              !id(inputs_1_8).is_failed() && !id(inputs_1_8).status_has_warning() &&
+              !id(outputs_1_8).is_failed() && !id(outputs_9_16).is_failed();
+          in.pump = decode(id(pump_selector_on).state, id(pump_selector_auto).state);
+          in.tank = decode(id(tank_selector_on).state, id(tank_selector_auto).state);
+          in.mode = id(selected_mode) == 0 ? Mode::NORMAL :
+              id(selected_mode) == 1 ? Mode::AWAY : Mode::SHUTDOWN;
+          Mode local_mode;
+          if (id(local_selectors).request(in, local_mode) && local_mode != in.mode) {
+            in.mode = local_mode;
+            id(selected_mode) = local_mode == Mode::NORMAL ? 0 : 2;
+            id(system_mode).publish_state(local_mode == Mode::NORMAL ? "Normal" : "Shutdown");
+          }
+          Settings cfg;
+          cfg.spin_duration_ms = uint32_t(id(spin_duration).state * 1000);
+          cfg.system_duration_ms = uint32_t(id(system_duration).state * 1000);
+          cfg.away_duration_ms = uint32_t(id(away_duration).state * 1000);
+          cfg.away_spin_duration_ms = uint32_t(id(away_spin_duration).state * 1000);
+          cfg.away_spin_interval_ms = uint32_t(86400000.0f / id(away_spin_flushes_per_day).state);
+          cfg.away_spin_auto = id(away_spin_auto_enabled).state;
+          cfg.spin_interval_ms = uint32_t(id(spin_interval).state * 60000);
+          cfg.system_interval_ms = uint32_t(id(system_interval).state * 60000);
+          cfg.away_interval_ms = uint32_t(86400000.0f / id(away_flushes_per_day).state);
+          cfg.spin_auto = id(spin_auto_enabled).state;
+          cfg.system_auto = id(system_auto_enabled).state;
+          cfg.away_auto = id(away_auto_enabled).state;
+          cfg.uv_enabled = id(uv_enabled).state;
+          const auto out = id(controller).step(millis(), in, cfg, id(flush_request));
+          id(flush_request) = Request::NONE;
+
+          const bool spin_scheduled = in.mode == Mode::AWAY ? cfg.away_spin_auto : cfg.spin_auto;
+          const auto led = indicators(now, in, out, wifi::global_wifi_component->is_connected(),
+                                      spin_scheduled, id(uv_health).fault() && out.uv);
+          uint16_t mask = 0;
+          auto bit = [&](unsigned channel, bool on) { if (on) mask |= uint16_t(1u << (channel - 1)); };
+          bit(1, out.pump); bit(2, out.tank); bit(3, out.uv);
+          bit(4, out.spin); bit(5, out.system);
+          bit(9, led.pump); bit(10, led.tank);
+          bit(11, led.spin); bit(12, led.uv_system);
+          write_outputs(mask);
+
+button:
+  - platform: template
+    name: Spin flush start or cancel
+    on_press:
+      - lambda: id(flush_request) = water_closet::Request::SPIN;
+      - script.execute: apply_control
+  - platform: template
+    name: System flush start or cancel
+    on_press:
+      - lambda: id(flush_request) = water_closet::Request::SYSTEM;
+      - script.execute: apply_control
+  - platform: template
+    name: Run Away flush
+    on_press:
+      - lambda: id(flush_request) = water_closet::Request::AWAY;
+      - script.execute: apply_control
+  - platform: template
+    name: Cancel flush
+    on_press:
+      - lambda: id(flush_request) = water_closet::Request::CANCEL;
+      - script.execute: apply_control
+
+text_sensor:
+  - platform: template
+    name: Pump selector
+    update_interval: 1s
+    lambda: |-
+      return std::string(water_closet::selector_name(water_closet::decode(
+          id(pump_selector_on).state, id(pump_selector_auto).state)));
+  - platform: template
+    name: Tank selector
+    update_interval: 1s
+    lambda: |-
+      return std::string(water_closet::selector_name(water_closet::decode(
+          id(tank_selector_on).state, id(tank_selector_auto).state)));
+  - platform: template
+    name: Flush status
+    update_interval: 1s
+    lambda: |-
+      return std::string(id(bench_test).active() ? "Bench test" : id(controller).flush_name());
+  - platform: template
+    name: Tank status
+    update_interval: 1s
+    lambda: |-
+      if (id(bench_test).active()) return std::string(id(tank_contactor).state ? "Bench: output on" : "Bench: output off");
+      const auto &out = id(controller).outputs();
+      return std::string(out.tank ? "Enabled" : out.tank_blocked ? "Blocked: pump disabled" : "Off");
+  - platform: template
+    name: UV status
+    update_interval: 1s
+    lambda: |-
+      if (id(bench_test).active()) return std::string(id(uv_contactor).state ? "Bench: output on" : "Bench: output off");
+      const auto &out = id(controller).outputs();
+      return std::string(out.uv ? "Enabled" : out.uv_pending ? "Waiting: minimum off time" : "Off");

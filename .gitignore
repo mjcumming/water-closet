@@ -1,0 +1,10 @@
+# ESPHome build output contains resolved Wi-Fi credentials. Do not commit it.
+/.esphome/
+
+# Local credentials. Copy secrets.yaml.example to secrets.yaml.
+/secrets.yaml
+/secrets_*.yaml
+
+# Kept on this machine only.
+/CURRENT_IMPLEMENTATION.md
+/reference/

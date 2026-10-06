@@ -1,0 +1,225 @@
+# Dormant until CTs are installed and measured calibration/thresholds are set.
+globals:
+  - id: pump_sample
+    type: water_closet::CurrentSample
+    restore_value: no
+  - id: tank_sample
+    type: water_closet::CurrentSample
+    restore_value: no
+  - id: uv_sample
+    type: water_closet::CurrentSample
+    restore_value: no
+  - id: pump_usage
+    type: water_closet::UsageMonitor
+    restore_value: no
+  - id: tank_usage
+    type: water_closet::UsageMonitor
+    restore_value: no
+  - id: uv_health
+    type: water_closet::UVHealth
+    restore_value: no
+
+switch:
+  - platform: template
+    name: UV current monitoring
+    id: uv_current_monitoring
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+
+number:
+  - platform: template
+    id: pump_calibration
+    name: Pump current calibration
+    unit_of_measurement: A/V
+    min_value: 0
+    max_value: 1000
+    step: 0.01
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: tank_calibration
+    name: Tank current calibration
+    unit_of_measurement: A/V
+    min_value: 0
+    max_value: 1000
+    step: 0.01
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: uv_calibration
+    name: UV current calibration
+    unit_of_measurement: A/V
+    min_value: 0
+    max_value: 1000
+    step: 0.01
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: pump_running_threshold
+    name: Pump running threshold
+    unit_of_measurement: A
+    min_value: 0
+    max_value: 100
+    step: 0.05
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: tank_running_threshold
+    name: Tank running threshold
+    unit_of_measurement: A
+    min_value: 0
+    max_value: 100
+    step: 0.05
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: uv_minimum_current
+    name: UV minimum current
+    unit_of_measurement: A
+    min_value: 0
+    max_value: 100
+    step: 0.01
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: uv_warmup
+    name: UV current warmup
+    unit_of_measurement: s
+    min_value: 0
+    max_value: 600
+    step: 1
+    initial_value: 60
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    id: uv_low_delay
+    name: UV low current delay
+    unit_of_measurement: s
+    min_value: 0
+    max_value: 300
+    step: 1
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+
+sensor:
+  - platform: template
+    name: Pump measured current
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      return id(pump_sample).amps(millis(), id(pump_calibration).state, id(ct_sampling_enabled).state);
+  - platform: template
+    name: Tank measured current
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      return id(tank_sample).amps(millis(), id(tank_calibration).state, id(ct_sampling_enabled).state);
+  - platform: template
+    name: UV measured current
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      return id(uv_sample).amps(millis(), id(uv_calibration).state, id(ct_sampling_enabled).state);
+  - platform: template
+    name: Pump observed runtime
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(pump_usage).runtime_seconds();
+  - platform: template
+    name: Pump detected starts
+    unit_of_measurement: starts
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(pump_usage).starts();
+  - platform: template
+    name: Tank observed runtime
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(tank_usage).runtime_seconds();
+  - platform: template
+    name: Tank detected starts
+    unit_of_measurement: starts
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(tank_usage).starts();
+
+binary_sensor:
+  - platform: template
+    name: UV low current fault
+    device_class: problem
+    lambda: |-
+      return id(uv_health).fault();
+  - platform: template
+    name: Control output communication fault
+    device_class: problem
+    lambda: |-
+      return id(outputs_1_8).is_failed() || id(outputs_1_8).status_has_warning() || id(outputs_9_16).is_failed() || id(outputs_9_16).status_has_warning();
+
+text_sensor:
+  - platform: template
+    name: UV electrical status
+    update_interval: 1s
+    lambda: |-
+      return std::string(id(bench_test).active() ? "Bench test" : id(uv_health).status());
+  - platform: template
+    name: Pump activity
+    update_interval: 1s
+    lambda: |-
+      return std::string(!id(pump_usage).known() ? "Unknown: CT not ready" : id(pump_usage).running() ? "Running" : "Idle");
+  - platform: template
+    name: Tank activity
+    update_interval: 1s
+    lambda: |-
+      return std::string(!id(tank_usage).known() ? "Unknown: CT not ready" : id(tank_usage).running() ? "Running" : "Idle");
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const bool sampling = id(ct_sampling_enabled).state;
+          id(pump_usage).update(now, id(pump_sample).amps(now, id(pump_calibration).state, sampling), id(pump_running_threshold).state);
+          id(tank_usage).update(now, id(tank_sample).amps(now, id(tank_calibration).state, sampling), id(tank_running_threshold).state);
+          id(uv_health).update(now, id(uv_current_monitoring).state && !id(bench_test).active(),
+              id(uv_contactor).state, id(uv_sample).amps(now, id(uv_calibration).state, sampling),
+              id(uv_minimum_current).state, uint32_t(id(uv_warmup).state * 1000),
+              uint32_t(id(uv_low_delay).state * 1000));

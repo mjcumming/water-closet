@@ -1,0 +1,265 @@
+# Pressure uses the measured onboard 150-ohm receiver (148.8 ohms on the meter).
+# CT sensors publish uncalibrated AC volts until the bias circuits are completed.
+# No CT signal or pressure reading changes equipment commands in this candidate.
+ads1115:
+  - id: current_adc
+    address: 0x48
+    continuous_mode: true
+
+globals:
+  - id: pressure_sample_ms
+    type: uint32_t
+    initial_value: "0"
+  - id: pressure_seen
+    type: bool
+    initial_value: "false"
+  - id: ct_sampling
+    type: bool
+    initial_value: "false"
+
+switch:
+  - platform: template
+    name: CT sampling enabled
+    id: ct_sampling_enabled
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+
+sensor:
+  - platform: template
+    name: Away system next flush
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return (id(controller).away_next_ms(false, millis()) + 999) / 1000;
+  - platform: template
+    name: Away spin next flush
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return (id(controller).away_next_ms(true, millis()) + 999) / 1000;
+  - platform: uptime
+    name: Controller uptime
+  - platform: adc
+    pin: GPIO36
+    name: Pressure loop voltage
+    id: pressure_voltage
+    attenuation: 12db
+    update_interval: 1s
+    samples: 10
+    accuracy_decimals: 3
+    unit_of_measurement: V
+    device_class: voltage
+    state_class: measurement
+    entity_category: diagnostic
+    on_value:
+      - lambda: |-
+          id(pressure_sample_ms) = millis();
+          id(pressure_seen) = true;
+  - platform: template
+    name: Pressure loop current
+    unit_of_measurement: mA
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (!id(pressure_seen) || millis() - id(pressure_sample_ms) > 5000) return NAN;
+      return id(pressure_voltage).state / 0.150f;
+  - platform: template
+    name: Water pressure
+    id: water_pressure
+    unit_of_measurement: psi
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 1s
+    lambda: |-
+      float ma = id(pressure_voltage).state / 0.150f;
+      if (!id(pressure_seen) || millis() - id(pressure_sample_ms) > 5000 ||
+          !std::isfinite(ma) || ma < 3.6f || ma > 21.0f) return NAN;
+      return (ma - 4.0f) * 6.25f;
+  - platform: template
+    name: Flush remaining
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return (id(controller).remaining_ms(millis()) + 999) / 1000;
+  - platform: template
+    name: UV start remaining
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return (id(controller).uv_wait_remaining_ms(millis()) + 999) / 1000;
+  - platform: ads1115
+    id: pump_adc
+    ads1115_id: current_adc
+    multiplexer: A0_GND
+    gain: "4.096"
+    sample_rate: 860
+    update_interval: never
+    internal: true
+  - platform: ct_clamp
+    id: pump_ct_raw
+    name: Pump CT signal
+    sensor: pump_adc
+    sample_duration: 300ms
+    update_interval: never
+    unit_of_measurement: V
+    device_class: voltage
+    accuracy_decimals: 4
+    entity_category: diagnostic
+    on_raw_value:
+      - lambda: |-
+          id(pump_sample).record(millis(), x);
+          id(ct_sampling) = false;
+    filters:
+      - timeout: 30s
+  - platform: ads1115
+    id: tank_adc
+    ads1115_id: current_adc
+    multiplexer: A1_GND
+    gain: "4.096"
+    sample_rate: 860
+    update_interval: never
+    internal: true
+  - platform: ct_clamp
+    id: tank_ct_raw
+    name: Tank CT signal
+    sensor: tank_adc
+    sample_duration: 300ms
+    update_interval: never
+    unit_of_measurement: V
+    device_class: voltage
+    accuracy_decimals: 4
+    entity_category: diagnostic
+    on_raw_value:
+      - lambda: |-
+          id(tank_sample).record(millis(), x);
+          id(ct_sampling) = false;
+    filters:
+      - timeout: 30s
+  - platform: ads1115
+    id: uv_adc
+    ads1115_id: current_adc
+    multiplexer: A2_GND
+    gain: "4.096"
+    sample_rate: 860
+    update_interval: never
+    internal: true
+  - platform: ct_clamp
+    id: uv_ct_raw
+    name: UV CT signal
+    sensor: uv_adc
+    sample_duration: 300ms
+    update_interval: never
+    unit_of_measurement: V
+    device_class: voltage
+    accuracy_decimals: 4
+    entity_category: diagnostic
+    on_raw_value:
+      - lambda: |-
+          id(uv_sample).record(millis(), x);
+          id(ct_sampling) = false;
+    filters:
+      - timeout: 30s
+
+binary_sensor:
+  - platform: template
+    name: Home Assistant connected
+    entity_category: diagnostic
+    lambda: |-
+      // Identify authenticated HA clients; browser, logger and diagnostic API
+      // connections must not masquerade as Home Assistant. No Pi polling needed.
+      if (!api::global_api_server) return false;
+      for (const auto &client : api::global_api_server->active_clients()) {
+        const std::string name = client->get_name();
+        if (client->is_authenticated() &&
+            (name == "Home Assistant" || name.rfind("Home Assistant ", 0) == 0)) return true;
+      }
+      return false;
+  - platform: template
+    name: Tank blocked by pump
+    device_class: problem
+    lambda: return id(controller).outputs().tank_blocked;
+  - platform: template
+    name: Wi-Fi connected
+    entity_category: diagnostic
+    lambda: return wifi::global_wifi_component->is_connected();
+  - platform: template
+    name: Pump enabled
+    lambda: return id(pump_contactor).state;
+  - platform: template
+    name: Tank enabled
+    lambda: return id(tank_contactor).state;
+  - platform: template
+    name: UV enabled
+    lambda: return id(uv_contactor).state;
+  - platform: template
+    name: Spin flush active
+    lambda: return id(spin_flush_valve).state;
+  - platform: template
+    name: System flush active
+    lambda: return id(system_flush_valve).state;
+  - platform: template
+    name: UV start pending
+    lambda: return id(controller).outputs().uv_pending;
+  - platform: template
+    name: Selector fault
+    device_class: problem
+    lambda: |-
+      return (id(pump_selector_on).state && id(pump_selector_auto).state) ||
+          (id(tank_selector_on).state && id(tank_selector_auto).state);
+  - platform: template
+    name: Pressure signal valid
+    entity_category: diagnostic
+    lambda: |-
+      const float ma = id(pressure_voltage).state / 0.150f;
+      return id(pressure_seen) && millis() - id(pressure_sample_ms) <= 5000 &&
+          std::isfinite(ma) && ma >= 3.6f && ma <= 21.0f;
+  - platform: template
+    name: Control input communication fault
+    device_class: problem
+    lambda: return id(inputs_1_8).is_failed() || id(inputs_1_8).status_has_warning();
+
+text_sensor:
+  - platform: template
+    name: Away system schedule
+    update_interval: 1s
+    lambda: |-
+      if (id(bench_test).active()) return std::string("Paused: bench test");
+      return std::string(id(controller).away_schedule_status(false, millis()));
+  - platform: template
+    name: Away spin schedule
+    update_interval: 1s
+    lambda: |-
+      if (id(bench_test).active()) return std::string("Paused: bench test");
+      return std::string(id(controller).away_schedule_status(true, millis()));
+
+# No ADC polls run in the background. Each CT publishes before the next starts,
+# so only one sampling window owns the ADS multiplexer at a time.
+interval:
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            switch.is_on: ct_sampling_enabled
+          then:
+            - script.execute: sample_currents
+
+script:
+  - id: sample_currents
+    mode: single
+    then:
+      - lambda: id(ct_sampling) = true;
+      - component.update: pump_ct_raw
+      - wait_until:
+          lambda: return !id(ct_sampling);
+      - lambda: id(ct_sampling) = true;
+      - component.update: tank_ct_raw
+      - wait_until:
+          lambda: return !id(ct_sampling);
+      - lambda: id(ct_sampling) = true;
+      - component.update: uv_ct_raw
+      - wait_until:
+          lambda: return !id(ct_sampling);
+

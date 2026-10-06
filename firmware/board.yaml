@@ -1,0 +1,351 @@
+# Physical binding only. Behavior lives in water_closet_control.h.
+# CONNECTIONS.md owns the terminal map. Facing the knob, left is On and right is Auto.
+# OUT1–3 contactors, OUT4–5 flush valves, OUT9–12 the four LEDs.
+i2c:
+  sda: GPIO4
+  scl:
+    number: GPIO5
+    ignore_strapping_warning: true
+  scan: true
+
+pcf8574:
+  - id: inputs_1_8
+    address: 0x21
+  - id: inputs_9_16
+    address: 0x22
+  - id: outputs_1_8
+    address: 0x24
+  - id: outputs_9_16
+    address: 0x25
+
+binary_sensor:
+  - platform: gpio
+    id: tank_selector_on  # IN1: tank On, left
+    name: IN01 Tank On
+    pin:
+      pcf8574: inputs_1_8
+      number: ${tank_on_pin}
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: tank_selector_auto  # IN2: tank Auto, right
+    name: IN02 Tank Auto
+    pin:
+      pcf8574: inputs_1_8
+      number: ${tank_auto_pin}
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: pump_selector_on  # IN3: pump On, left
+    name: IN03 Pump On
+    pin:
+      pcf8574: inputs_1_8
+      number: ${pump_on_pin}
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: pump_selector_auto  # IN4: pump Auto, right
+    name: IN04 Pump Auto
+    pin:
+      pcf8574: inputs_1_8
+      number: ${pump_auto_pin}
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: spin_flush_button  # IN5
+    name: IN05 Spin button
+    pin:
+      pcf8574: inputs_1_8
+      number: 4
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+    on_press:
+      - if:
+          condition:
+            lambda: return id(controls_ready) && id(spin_button_armed);
+          then:
+            - lambda: |-
+                id(spin_button_armed) = false;
+                id(flush_request) = water_closet::Request::SPIN;
+            - script.execute: apply_control
+    on_release:
+      - lambda: id(spin_button_armed) = true;
+  - platform: gpio
+    id: system_flush_button  # IN6: UV button requests system flush, not lamp power
+    name: IN06 UV button
+    pin:
+      pcf8574: inputs_1_8
+      number: 5
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+    on_press:
+      - if:
+          condition:
+            lambda: return id(controls_ready) && id(system_button_armed);
+          then:
+            - lambda: |-
+                id(system_button_armed) = false;
+                id(flush_request) = water_closet::Request::SYSTEM;
+            - script.execute: apply_control
+    on_release:
+      - lambda: id(system_button_armed) = true;
+
+  - platform: gpio
+    id: input_7
+    name: IN07 Spare
+    pin:
+      pcf8574: inputs_1_8
+      number: 6
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_8
+    name: IN08 Spare
+    pin:
+      pcf8574: inputs_1_8
+      number: 7
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_9
+    name: IN09 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 0
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_10
+    name: IN10 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 1
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_11
+    name: IN11 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 2
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_12
+    name: IN12 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 3
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_13
+    name: IN13 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 4
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_14
+    name: IN14 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 5
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_15
+    name: IN15 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 6
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+  - platform: gpio
+    id: input_16
+    name: IN16 Spare
+    pin:
+      pcf8574: inputs_9_16
+      number: 7
+      mode: INPUT
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
+
+switch:
+  - platform: gpio
+    id: pump_contactor  # OUT1
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 0
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: tank_contactor  # OUT2
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 1
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: uv_contactor  # OUT3
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 2
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: spin_flush_valve  # OUT4
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 3
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: system_flush_valve  # OUT5
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 4
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out6
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 5
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out7
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 6
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out8
+    internal: true
+    pin:
+      pcf8574: outputs_1_8
+      number: 7
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: pump_indicator  # OUT9: LED only
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 0
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: tank_indicator  # OUT10: LED only
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 1
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: spin_flush_indicator  # OUT11: LED only
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 2
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: system_flush_indicator  # OUT12: UV button LED only
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 3
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out13
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 4
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out14
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 5
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out15
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 6
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: unused_out16
+    internal: true
+    pin:
+      pcf8574: outputs_9_16
+      number: 7
+      mode: OUTPUT
+      inverted: true
+    restore_mode: ALWAYS_OFF
+

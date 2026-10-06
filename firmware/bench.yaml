@@ -1,0 +1,233 @@
+# Bench controls are guarded here; physical GPIO switches remain internal.
+# This is a wiring-test session, separate from Normal/Away/Shutdown.
+script:
+  - id: set_bench_mode
+    mode: single
+    parameters:
+      enabled: bool
+    then:
+      - lambda: |-
+          if (enabled) id(bench_test).begin(); else id(bench_test).end();
+          id(selected_mode) = 2;
+          id(system_mode).publish_state("Shutdown");
+          id(controller) = water_closet::Controller{};
+          id(local_selectors) = water_closet::LocalSelectors{};
+          id(flush_request) = water_closet::Request::NONE;
+          id(spin_button_armed) = !id(spin_flush_button).state;
+          id(system_button_armed) = !id(system_flush_button).state;
+      - script.execute: apply_control
+
+switch:
+  - platform: template
+    name: Bench test
+    id: bench_enabled
+    restore_mode: DISABLED
+    lambda: return id(bench_test).active();
+    turn_on_action:
+      - script.execute:
+          id: set_bench_mode
+          enabled: true
+    turn_off_action:
+      - script.execute:
+          id: set_bench_mode
+          enabled: false
+  - platform: template
+    name: Test OUT01
+    id: test_out_1
+    restore_mode: DISABLED
+    lambda: return id(pump_contactor).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(1, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(1, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT02
+    id: test_out_2
+    restore_mode: DISABLED
+    lambda: return id(tank_contactor).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(2, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(2, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT03
+    id: test_out_3
+    restore_mode: DISABLED
+    lambda: return id(uv_contactor).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(3, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(3, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT04
+    id: test_out_4
+    restore_mode: DISABLED
+    lambda: return id(spin_flush_valve).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(4, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(4, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT05
+    id: test_out_5
+    restore_mode: DISABLED
+    lambda: return id(system_flush_valve).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(5, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(5, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT06
+    id: test_out_6
+    restore_mode: DISABLED
+    lambda: return id(unused_out6).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(6, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(6, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT07
+    id: test_out_7
+    restore_mode: DISABLED
+    lambda: return id(unused_out7).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(7, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(7, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT08
+    id: test_out_8
+    restore_mode: DISABLED
+    lambda: return id(unused_out8).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(8, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(8, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT09
+    id: test_out_9
+    restore_mode: DISABLED
+    lambda: return id(pump_indicator).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(9, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(9, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT10
+    id: test_out_10
+    restore_mode: DISABLED
+    lambda: return id(tank_indicator).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(10, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(10, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT11
+    id: test_out_11
+    restore_mode: DISABLED
+    lambda: return id(spin_flush_indicator).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(11, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(11, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT12
+    id: test_out_12
+    restore_mode: DISABLED
+    lambda: return id(system_flush_indicator).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(12, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(12, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT13
+    id: test_out_13
+    restore_mode: DISABLED
+    lambda: return id(unused_out13).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(13, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(13, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT14
+    id: test_out_14
+    restore_mode: DISABLED
+    lambda: return id(unused_out14).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(14, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(14, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT15
+    id: test_out_15
+    restore_mode: DISABLED
+    lambda: return id(unused_out15).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(15, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(15, false);
+      - script.execute: apply_control
+  - platform: template
+    name: Test OUT16
+    id: test_out_16
+    restore_mode: DISABLED
+    lambda: return id(unused_out16).state;
+    turn_on_action:
+      - lambda: id(bench_test).set(16, true);
+      - script.execute: apply_control
+    turn_off_action:
+      - lambda: id(bench_test).set(16, false);
+      - script.execute: apply_control
+
+button:
+  - platform: template
+    name: All outputs off
+    on_press:
+      - lambda: |-
+          id(bench_test).all_off();
+          id(selected_mode) = 2;
+          id(system_mode).publish_state("Shutdown");
+          id(controller) = water_closet::Controller{};
+          id(local_selectors) = water_closet::LocalSelectors{};
+          id(flush_request) = water_closet::Request::NONE;
+      - script.execute: apply_control
+
+binary_sensor:
+  - platform: template
+    name: Remote mode available
+    lambda: |-
+      return !id(bench_test).active() && id(controls_ready) &&
+          !id(inputs_1_8).is_failed() && !id(inputs_1_8).status_has_warning() &&
+          id(pump_selector_on).has_state() && id(pump_selector_auto).has_state() &&
+          id(tank_selector_on).has_state() && id(tank_selector_auto).has_state() &&
+          !id(pump_selector_on).state && id(pump_selector_auto).state &&
+          !id(tank_selector_on).state && id(tank_selector_auto).state;
