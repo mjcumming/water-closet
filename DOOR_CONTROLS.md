@@ -13,7 +13,7 @@ Move both selectors to Auto to request Normal. Move both to Off to request Shutd
 | Light | Meaning |
 |---|---|
 | Pump selector | Steady: pump enabled; off: disabled; fast blink: invalid selector contacts |
-| Tank selector | Steady: tank enabled; slow blink: heat requested but pump disabled; fast blink: invalid contacts |
+| Tank selector | Steady: tank enabled; slow blink: waiting for pump startup or heat requested but pump disabled; fast blink: invalid contacts |
 | Spin button | Steady: automatic spin enabled for the current mode; fast blink: spin flushing; off when disabled or in Shutdown |
 | UV/system button | Slow blink: waiting to start UV; steady: UV enabled; fast blink: system/Away flush; rapid flicker: calibrated UV low-current fault; otherwise off |
 | Both button LEDs, two short flashes together then a pause | Wi-Fi disconnected; repeats every five seconds when no valve is active |
@@ -21,6 +21,8 @@ Move both selectors to Auto to request Normal. Move both to Off to request Shutd
 Slow means once per second, fast means twice per second, and rapid UV fault flicker means five times per second. Active flushing takes priority over the shared network pattern; a confirmed UV current fault takes highest priority on its LED. Current monitoring is initially disabled and uncalibrated, so absent CTs do not cause a fault. Local operation continues without Wi-Fi or Home Assistant. HA connectivity is shown separately on the dashboard. Intentional tank Off, Away Auto or Shutdown does not produce a blocked-heating blink. In normal operation, pump disabled always forces tank disabled, including tank On.
 
 Away now has separate spin and system-water-exchange schedules, each with enable, one-to-four runs per day and duration. The top Away plan displays both settings and their next run/status. Spin runs first if both are due, followed by system flushing; tank and UV stay off. The spin button can start/cancel an Away spin run. The Run Away Flush web control starts a system exchange. UV lamp policy is unchanged. Equipment activity shows optional CT-based runtime/start estimates; calibration and UV fault setup are tucked under Advanced. See DESIGN.md for timer rules and monitoring limits.
+
+After power restoration, outputs start off and the saved Normal/Away/Shutdown mode resumes through the current selectors and interlocks. Missing/invalid saved mode defaults to Shutdown. Mode changes commit to flash immediately. Each pump enable starts a five-second heater delay, indicated by a slow tank LED blink and Waiting: pump startup on the dashboard. This delay does not detect water: fill the tank before enabling heating. The CT-based idea of waiting for an observed pump run and stop is recorded as future work in DESIGN.md and is not active.
 
 ## Settled design and rationale
 

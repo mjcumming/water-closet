@@ -29,6 +29,7 @@ select:
           }
           if (id(bench_test).active()) id(set_bench_mode).execute(false);
           id(selected_mode) = requested == Mode::NORMAL ? 0 : requested == Mode::AWAY ? 1 : 2;
+          id(persist_mode).execute();
           id(system_mode).publish_state(x);
       - script.execute: apply_control
 

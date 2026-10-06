@@ -128,6 +128,19 @@ interval:
       - script.execute: apply_control
 
 script:
+  - id: persist_mode
+    mode: single
+    then:
+      # Copy a changed global to preferences now, then commit it before returning.
+      # sync() alone would miss the global's normal one-second update window.
+      # The restoring component only saves when the value has actually changed.
+      - lambda: |-
+          // id(selected_mode) resolves to its int value, not the component.
+          // Call the restoring component directly to bypass its polling interval.
+          selected_mode->update();
+          if (!esphome::global_preferences->sync()) {
+            ESP_LOGE("mode", "Mode flash commit failed; restoration may use the previous mode");
+          }
   - id: apply_control
     mode: single
     then:
@@ -176,6 +189,7 @@ script:
           if (id(local_selectors).request(in, local_mode) && local_mode != in.mode) {
             in.mode = local_mode;
             id(selected_mode) = local_mode == Mode::NORMAL ? 0 : 2;
+            id(persist_mode).execute();
             id(system_mode).publish_state(local_mode == Mode::NORMAL ? "Normal" : "Shutdown");
           }
           Settings cfg;
@@ -252,7 +266,8 @@ text_sensor:
     lambda: |-
       if (id(bench_test).active()) return std::string(id(tank_contactor).state ? "Bench: output on" : "Bench: output off");
       const auto &out = id(controller).outputs();
-      return std::string(out.tank ? "Enabled" : out.tank_blocked ? "Blocked: pump disabled" : "Off");
+      return std::string(out.tank ? "Enabled" : out.tank_blocked ? "Blocked: pump disabled" :
+          out.tank_pending ? "Waiting: pump startup" : "Off");
   - platform: template
     name: UV status
     update_interval: 1s

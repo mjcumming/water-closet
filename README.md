@@ -2,6 +2,8 @@
 
 ESPHome controller for a cabin water system on one KinCony KC868-A16. It runs the well pump, tank heater, UV lamp, spin-filter flush, and system flush. Local selectors and buttons stay usable, and a small dashboard shows mode, flush time, and the UV start countdown.
 
+Power restoration starts outputs off and restores the saved Normal/Away/Shutdown mode through the selectors and interlocks. Mode changes commit immediately to flash. The heater waits five seconds after each pump enable; its LED slowly blinks and the dashboard explains the startup wait. This is sequencing only: the tank must already be filled. A future CT-based pump-cycle startup idea is recorded in DESIGN.md.
+
 Operational firmware is [water-closet.yaml](water-closet.yaml). The `kc868-a16*.yaml` files are bench pages. Modes are **Normal, Away, and Shutdown**. The controller owns local operation; Home Assistant integration is later work.
 
 ## Secrets

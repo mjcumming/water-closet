@@ -67,7 +67,7 @@ document.body.insertAdjacentHTML('beforeend', `
   <section class="panel" aria-labelledby="manual-heading">
     <div class="section-heading"><h2 id="manual-heading">Manual controls</h2><span class="muted">Normal operating rules apply</span></div>
     <div class="manual-actions"><button data-press="spin_flush_start_or_cancel">Spin flush · start / cancel</button><button data-press="system_flush_start_or_cancel">System flush · start / cancel</button><button data-press="run_away_flush">Run Away flush</button><button data-press="cancel_flush">Cancel flush</button><button id="uv-enable" aria-pressed="false">UV permission · —</button></div>
-    <details class="led-guide"><summary>What the door LEDs mean</summary><div class="led-grid"><p><strong>Pump & tank</strong>Steady: enabled. Tank slow blink: heat requested, blocked by pump. Fast blink: invalid selector contacts.</p><p><strong>Spin button</strong>Steady: automatic spin schedule enabled for this mode. Fast blink: spin flushing. Off in Shutdown.</p><p><strong>UV / system button</strong>Slow blink: waiting to start UV. Steady: UV enabled. Fast blink: system flush. Rapid flicker: confirmed low current.</p><p><strong>Both button LEDs</strong>Two short flashes together, then a pause: Wi-Fi disconnected. Active flushing takes priority; a UV current fault always takes priority on its own LED.</p></div><p class="small-note">Local operation continues without Wi-Fi or Home Assistant. UV current faults require installed, calibrated CT monitoring; current does not prove UV treatment performance.</p></details>
+    <details class="led-guide"><summary>What the door LEDs mean</summary><div class="led-grid"><p><strong>Pump & tank</strong>Steady: enabled. Tank slow blink: heat requested, waiting for pump startup or blocked by pump. Fast blink: invalid selector contacts.</p><p><strong>Spin button</strong>Steady: automatic spin schedule enabled for this mode. Fast blink: spin flushing. Off in Shutdown.</p><p><strong>UV / system button</strong>Slow blink: waiting to start UV. Steady: UV enabled. Fast blink: system flush. Rapid flicker: confirmed low current.</p><p><strong>Both button LEDs</strong>Two short flashes together, then a pause: Wi-Fi disconnected. Active flushing takes priority; a UV current fault always takes priority on its own LED.</p></div><p class="small-note">Local operation continues without Wi-Fi or Home Assistant. UV current faults require installed, calibrated CT monitoring; current does not prove UV treatment performance.</p></details>
   </section>
   <details class="panel advanced" id="advanced-panel"><summary>Advanced <span id="advanced-status">Bench test & live I/O</span></summary>
   <section class="bench-panel" aria-labelledby="bench-heading">
@@ -170,6 +170,7 @@ function render() {
   }
   const pending = online && !testing && bool('binary_sensor', 'uv_start_pending') === true;
   const blocked = online && !testing && bool('binary_sensor', 'tank_blocked_by_pump') === true;
+  const tankPending = online && !testing && textState('text_sensor', 'tank_status') === 'Waiting: pump startup';
   const flushing = online && !testing && ['spin_flush_active', 'system_flush_active'].some(slug => bool('binary_sensor', slug) === true);
   const uvWait = seconds('uv_start_remaining');
   const flushWait = seconds('flush_remaining');
@@ -181,11 +182,11 @@ function render() {
   $('#flush-countdown').textContent = flushWait === null ? '' : duration(flushWait);
   for (const name of ['pump','tank','uv']) $(`#${name}-card`).classList.toggle('enabled', online && bool('binary_sensor', `${name}_enabled`) === true);
   $('#uv-card').classList.toggle('waiting', pending);
-  $('#tank-card').classList.toggle('waiting', blocked);
+  $('#tank-card').classList.toggle('waiting', blocked || tankPending);
   $('#flush-card').classList.toggle('enabled', flushing);
   const unavailable = !online ? 'Waiting for live controller data' : testing ? 'Direct output control · Advanced' : null;
   $('#pump-detail').textContent = unavailable ?? (pumpOn ? 'Pump selector LED · steady' : 'Pump selector LED · off');
-  $('#tank-detail').textContent = unavailable ?? (blocked ? 'Pump must be enabled · slow blink' : bool('binary_sensor', 'tank_enabled') ? 'Tank selector LED · steady' : 'No heat requested');
+  $('#tank-detail').textContent = unavailable ?? (blocked ? 'Pump must be enabled · slow blink' : tankPending ? 'Five-second startup delay · slow blink' : bool('binary_sensor', 'tank_enabled') ? 'Tank selector LED · steady' : 'No heat requested');
   $('#uv-detail').textContent = unavailable ?? (pending ? 'Minimum-off protection · slow blink' : bool('binary_sensor', 'uv_enabled') ? 'UV button LED · steady unless flushing' : bool('switch', 'uv_enable') === false ? 'UV permission is off' : 'Waiting for an operating request');
   $('#flush-detail').textContent = unavailable ?? (flushing ? 'Time remaining · valve commanded open' : flushStatus === 'Idle' ? 'No flush active' : 'Sequence controlled by the A16');
   const uvFault = online && !testing && bool('binary_sensor','uv_low_current_fault') === true;

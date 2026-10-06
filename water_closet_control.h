@@ -57,6 +57,7 @@ struct Outputs {
   bool system{false};
   bool uv_pending{false};
   bool tank_blocked{false};
+  bool tank_pending{false};
 };
 
 struct Indicators {
@@ -71,7 +72,7 @@ inline Indicators indicators(uint32_t now, const Inputs &in, const Outputs &out,
   const bool fast = (now / 250) % 2 == 0;  // 2 Hz: flushing/invalid contacts.
   Indicators led;
   led.pump = in.pump == Selector::INVALID ? fast : out.pump;
-  led.tank = in.tank == Selector::INVALID ? fast : out.tank_blocked ? slow : out.tank;
+  led.tank = in.tank == Selector::INVALID ? fast : (out.tank_blocked || out.tank_pending) ? slow : out.tank;
   led.spin = out.spin ? fast : in.ready && in.mode != Mode::SHUTDOWN && spin_schedule_enabled;
   led.uv_system = out.system ? fast : out.uv_pending ? slow : out.uv;
   if (!wifi_connected && !out.spin && !out.system) {
@@ -166,6 +167,8 @@ class Controller {
   static constexpr uint32_t MAX_FLUSH_MS = 300000;
   static constexpr uint32_t MAX_AWAY_FLUSH_MS = 1800000;
   static constexpr uint32_t PUMP_SETTLE_MS = 1000;
+  // Stagger heater startup after each pump enable. This is not water detection.
+  static constexpr uint32_t TANK_START_DELAY_MS = 5000;
   static constexpr uint32_t VALVE_GAP_MS = 1000;
 
   Outputs step(uint32_t now, const Inputs &in, const Settings &settings,
@@ -240,7 +243,14 @@ class Controller {
     }
 
     next.pump = pump_base || (permitted && pump_selected && away_flush());
-    if (next.pump && !out_.pump) pump_on_since_ = now;
+    if (next.pump && !out_.pump) {
+      pump_on_since_ = now;
+      pump_starting_ = true;
+    }
+    // Latch completion until another pump enable; a millis rollover weeks later
+    // must not briefly re-enter the heater startup delay.
+    if (!next.pump || (pump_starting_ && elapsed(now, pump_on_since_) >= TANK_START_DELAY_MS))
+      pump_starting_ = false;
     if (active_ != Flush::NONE && !opening_ && (next.pump && elapsed(now, pump_on_since_) >= PUMP_SETTLE_MS)) {
       opening_ = true;
       started_at_ = now;  // Begin the fixed valve-open deadline exactly once.
@@ -250,7 +260,8 @@ class Controller {
     const bool want_tank = permitted && !away_flush() &&
         (in.tank == Selector::ON || (in.tank == Selector::AUTO &&
         (in.mode == Mode::NORMAL)));
-    next.tank = want_tank && next.pump;
+    next.tank_pending = want_tank && next.pump && pump_starting_;
+    next.tank = want_tank && next.pump && !next.tank_pending;
     next.tank_blocked = want_tank && !next.pump;
 
     // Candidate UV rule: continuous while using water, immediate off when
@@ -330,6 +341,7 @@ class Controller {
   }
   bool started_{false};
   bool opening_{false};
+  bool pump_starting_{false};
   Mode mode_{Mode::SHUTDOWN};
   Flush active_{Flush::NONE};
   Outputs out_{};

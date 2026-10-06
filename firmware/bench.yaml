@@ -9,6 +9,7 @@ script:
       - lambda: |-
           if (enabled) id(bench_test).begin(); else id(bench_test).end();
           id(selected_mode) = 2;
+          id(persist_mode).execute();
           id(system_mode).publish_state("Shutdown");
           id(controller) = water_closet::Controller{};
           id(local_selectors) = water_closet::LocalSelectors{};
@@ -215,6 +216,7 @@ button:
       - lambda: |-
           id(bench_test).all_off();
           id(selected_mode) = 2;
+          id(persist_mode).execute();
           id(system_mode).publish_state("Shutdown");
           id(controller) = water_closet::Controller{};
           id(local_selectors) = water_closet::LocalSelectors{};

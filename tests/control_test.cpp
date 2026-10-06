@@ -18,6 +18,63 @@ struct Rig {
 };
 
 int main() {
+  { // Every pump enable, including boot/rollover, starts a fresh heater delay.
+    for (uint32_t start : {0u, 0xfffffc00u}) {
+      for (auto selector : {Selector::AUTO, Selector::ON}) {
+        Rig r; r.in.tank = selector;
+        auto out = r.at(start);
+        assert(out.pump && !out.tank && out.tank_pending && !out.tank_blocked);
+        assert(!r.at(start + 4999).tank);
+        assert(r.at(start + 5000).tank && !r.controller.outputs().tank_pending);
+        r.in.pump = Selector::OFF;
+        out = r.at(start + 5100);
+        assert(!out.pump && !out.tank && !out.tank_pending && out.tank_blocked);
+        r.in.pump = Selector::AUTO;
+        assert(r.at(start + 5200).tank_pending);
+        assert(!r.at(start + 10199).tank);
+        assert(r.at(start + 10200).tank);
+      }
+    }
+  }
+  { // Off/Shutdown/invalid input/readiness loss cancel, with no delayed replay.
+    for (unsigned stop = 0; stop < 5; ++stop) {
+      Rig r; r.at(0);
+      if (stop == 0) r.in.mode = Mode::SHUTDOWN;
+      if (stop == 1) r.in.mode = Mode::AWAY;
+      if (stop == 2) r.in.pump = Selector::INVALID;
+      if (stop == 3) r.in.tank = Selector::OFF;
+      if (stop == 4) r.in.ready = false;
+      assert(!r.at(1000).tank_pending);
+      assert(!r.at(6000).tank);
+      r.in = {Mode::NORMAL, Selector::AUTO, Selector::AUTO, true};
+      const auto resumed = r.at(7000);
+      // Tank-only Off leaves pump enabled; its completed startup delay still counts.
+      assert(resumed.tank == (stop == 3));
+      assert(resumed.tank_pending == (stop != 3));
+      assert(r.at(12000).tank);
+    }
+  }
+  { // A reboot forgets elapsed pump time; Away/Shutdown boot stays idle.
+    Rig r; r.at(0); assert(r.at(5000).tank);
+    r.controller = Controller{};
+    assert(r.at(0).tank_pending && !r.controller.outputs().tank);
+    assert(!r.at(4999).tank && r.at(5000).tank);
+    for (auto mode : {Mode::AWAY, Mode::SHUTDOWN}) {
+      r.controller = Controller{}; r.in.mode = mode;
+      auto out = r.at(0);
+      assert(!out.pump && !out.tank && !out.tank_pending);
+    }
+    Outputs pending; pending.tank_pending = true;
+    Inputs in{Mode::NORMAL, Selector::AUTO, Selector::AUTO, true};
+    assert(indicators(0, in, pending, true).tank);
+    assert(!indicators(500, in, pending, true).tank);
+  }
+  { // Continuous enable across a full millis cycle never restarts heater waiting.
+    Rig r; r.settings.spin_auto = r.settings.system_auto = false;
+    r.at(1000); assert(r.at(6000).tank);
+    assert(r.at(0xfffffff0u).tank);
+    assert(r.at(1000).tank && !r.controller.outputs().tank_pending);
+  }
   { // Missing CTs and zero calibration are unknown, never low-current alarms.
     CurrentSample sample;
     assert(std::isnan(sample.amps(0, 10, true)));
@@ -124,7 +181,8 @@ int main() {
     r.in.pump = Selector::AUTO; assert(!r.at(309000).pump);
     r.at(310000, Request::SPIN); r.at(311000);
     r.in.mode = Mode::NORMAL;
-    auto normal = r.at(312000); assert(normal.pump && normal.tank && !normal.spin);
+    auto normal = r.at(312000); assert(normal.pump && normal.tank_pending && !normal.spin);
+    assert(r.at(315000).tank);
   }
   { // Disabled schedules do not run; no dependency on wall time or network.
     for (bool spin : {false, true}) {
@@ -260,6 +318,8 @@ int main() {
             (pump == Selector::ON || (pump == Selector::AUTO &&
              mode == Mode::NORMAL));
         assert(out.pump == pump_expected);
+        assert(!out.tank);
+        out = r.at(Controller::TANK_START_DELAY_MS);
         assert(out.tank == (pump_expected &&
             (tank == Selector::ON || (tank == Selector::AUTO && mode == Mode::NORMAL))));
         assert(!out.spin && !out.system && !out.uv);
@@ -302,7 +362,8 @@ int main() {
     r.in.pump = r.in.tank = Selector::AUTO;
     assert(!r.at(300).tank_blocked);
     r.in.mode = Mode::NORMAL;
-    assert(r.at(400).tank && !r.at(400).tank_blocked);
+    assert(r.at(400).tank_pending && !r.at(400).tank_blocked);
+    assert(r.at(5400).tank);
   }
 
   { // Local Away schedule needs no clock or HA; defaults do not auto-flush.
@@ -392,7 +453,8 @@ int main() {
     assert(r.at(2000).system);
     r.in.mode = Mode::NORMAL;
     auto normal = r.at(3000);
-    assert(normal.pump && normal.tank && !normal.system);
+    assert(normal.pump && normal.tank_pending && !normal.tank && !normal.system);
+    assert(r.at(6000).tank); // Pump has been continuously enabled since t=1000.
     assert(r.at(302000).pump);
   }
   { // Completed Away run releases Auto pump, but honors a physical On selector.
@@ -501,8 +563,9 @@ int main() {
       if (r.in.tank == Selector::OFF || r.in.tank == Selector::INVALID)
         assert(!out.tank);
       if (out.spin || out.system) assert(out.pump);
+      if (out.tank) assert(out.pump && !out.tank_pending && !out.tank_blocked);
       if (r.controller.away_flush()) assert(!out.tank && !out.uv);
     }
   }
-  std::puts("PASS: selectors, bench, dual Away schedules, LED priorities, UV fault/unknown/grace, CT usage, rollover and restart");
+  std::puts("PASS: heater startup/cancellation, selectors, bench, dual Away schedules, LED priorities, UV fault/unknown/grace, CT usage, rollover and restart");
 }
