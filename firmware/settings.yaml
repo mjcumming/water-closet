@@ -71,13 +71,13 @@ switch:
 
 number:
   - platform: template
-    id: away_spin_flushes_per_day
-    name: Away spin flushes per day
-    unit_of_measurement: runs/day
+    id: away_spin_interval_hours
+    name: Away spin flush interval
+    unit_of_measurement: h
     min_value: 1
-    max_value: 4
+    max_value: 24
     step: 1
-    initial_value: 1
+    initial_value: 24
     optimistic: true
     restore_value: true
     mode: box
@@ -95,13 +95,13 @@ number:
     mode: box
     entity_category: config
   - platform: template
-    id: away_flushes_per_day
-    name: Away flushes per day
-    unit_of_measurement: runs/day
+    id: away_system_interval_hours
+    name: Away system flush interval
+    unit_of_measurement: h
     min_value: 1
-    max_value: 4
+    max_value: 24
     step: 1
-    initial_value: 2
+    initial_value: 12
     optimistic: true
     restore_value: true
     mode: box
@@ -143,25 +143,25 @@ number:
     mode: box
     entity_category: config
   - platform: template
-    id: spin_interval
-    name: Spin flush interval
-    unit_of_measurement: min
+    id: normal_spin_interval_hours
+    name: Normal spin flush interval
+    unit_of_measurement: h
     min_value: 1
-    max_value: 1440
+    max_value: 24
     step: 1
-    initial_value: 1440
+    initial_value: 24
     optimistic: true
     restore_value: true
     mode: box
     entity_category: config
   - platform: template
-    id: system_interval
-    name: System flush interval
-    unit_of_measurement: min
+    id: normal_system_interval_hours
+    name: Normal system flush interval
+    unit_of_measurement: h
     min_value: 1
-    max_value: 1440
+    max_value: 24
     step: 1
-    initial_value: 120
+    initial_value: 2
     optimistic: true
     restore_value: true
     mode: box

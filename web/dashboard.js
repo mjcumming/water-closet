@@ -25,14 +25,20 @@ function outputCard(n) {
   return `<div class="output-card"><span class="terminal">OUT${pad(n)}</span><span class="output-name">${outputNames[n - 1]}</span><button class="toggle" data-output="${n}" aria-label="OUT${pad(n)} ${outputNames[n - 1]}" aria-pressed="false" disabled>—</button></div>`;
 }
 const numberSettings = [
-  ['spin_duration', 'spin_flush_duration', 'Spin duration', 'seconds', 1, 300],
-  ['spin_interval', 'spin_flush_interval', 'Spin interval', 'minutes', 1, 1440],
-  ['system_duration', 'system_flush_duration', 'System refresh', 'seconds', 1, 300],
-  ['system_interval', 'system_flush_interval', 'System interval', 'minutes', 1, 1440],
-  ['away_duration', 'away_flush_duration', 'System exchange duration', 'seconds', 1, 1800],
-  ['away_flushes_per_day', 'away_flushes_per_day', 'System exchange frequency', 'runs / day', 1, 4],
-  ['away_spin_duration', 'away_spin_flush_duration', 'Away spin duration', 'seconds', 1, 300],
-  ['away_spin_frequency', 'away_spin_flushes_per_day', 'Away spin frequency', 'runs / day', 1, 4]
+  ['spin_interval', 'normal_spin_flush_interval', 'Interval', 'hours', 1, 24],
+  ['spin_duration', 'spin_flush_duration', 'Run time', 'seconds', 1, 300],
+  ['system_interval', 'normal_system_flush_interval', 'Interval', 'hours', 1, 24],
+  ['system_duration', 'system_flush_duration', 'Run time', 'seconds', 1, 300],
+  ['away_system_interval', 'away_system_flush_interval', 'Interval', 'hours', 1, 24],
+  ['away_duration', 'away_flush_duration', 'Run time', 'seconds', 1, 1800],
+  ['away_spin_interval', 'away_spin_flush_interval', 'Interval', 'hours', 1, 24],
+  ['away_spin_duration', 'away_spin_flush_duration', 'Run time', 'seconds', 1, 300]
+];
+const flushSchedules = [
+  {id:'normal-spin',mode:'Normal',title:'Spin filter flush',purpose:'Purge sediment from the spin filter.',toggle:'automatic_spin_flushing',numbers:numberSettings.slice(0,2)},
+  {id:'normal-system',mode:'Normal',title:'System / UV water flush',purpose:'Short refresh to move water through the UV chamber.',toggle:'automatic_system_flushing',numbers:numberSettings.slice(2,4)},
+  {id:'away-spin',mode:'Away',title:'Spin filter flush',purpose:'Purge the spin filter while you are away.',toggle:'scheduled_away_spin_flushing',numbers:numberSettings.slice(6,8)},
+  {id:'away-system',mode:'Away',title:'System / UV water flush',purpose:'Longer water exchange through the treatment system.',toggle:'scheduled_away_flushing',numbers:numberSettings.slice(4,6)}
 ];
 const healthSettings = [
   ...['pump','tank','uv'].map(load => [`${load}_calibration`,`${load}_current_calibration`,`${load === 'uv' ? 'UV' : load[0].toUpperCase()+load.slice(1)} calibration`,'A / signal V',0,1000,0.01]),
@@ -41,7 +47,8 @@ const healthSettings = [
   ['uv_warmup','uv_current_warmup','UV warmup grace','seconds',0,600],
   ['uv_low_delay','uv_low_current_delay','UV low current delay','seconds',0,300]
 ];
-const settingForms = list => list.map(([id,slug,label,unit,min,max,step=1])=>`<form data-number="${slug}"><label for="${id}">${label} <span>${unit}</span></label><div><input id="${id}" type="number" min="${min}" max="${max}" step="${step}" required><button type="submit">Save</button></div></form>`).join('');
+const settingForms = (list, context = '') => list.map(([id,slug,label,unit,min,max,step=1])=>`<form data-number="${slug}"><label for="${id}">${label} <span>${unit}</span></label><div><input id="${id}" ${context ? `aria-label="${context} ${label} (${unit})"` : ''} type="number" min="${min}" max="${max}" step="${step}" required><button type="submit">Save</button></div></form>`).join('');
+const flushScheduleCard = schedule => `<section class="flush-setting-card" aria-labelledby="${schedule.id}-heading"><div class="flush-setting-heading"><h4 id="${schedule.id}-heading">${schedule.title}</h4><button data-setting="${schedule.toggle}" data-label="Schedule" aria-label="${schedule.mode} ${schedule.title} schedule" aria-pressed="false">Schedule · —</button></div><p class="help">${schedule.purpose}</p><div class="settings-grid">${settingForms(schedule.numbers, `${schedule.mode} ${schedule.title}`)}</div></section>`;
 
 document.querySelector('esp-app')?.remove();
 document.body.insertAdjacentHTML('beforeend', `
@@ -83,7 +90,11 @@ document.body.insertAdjacentHTML('beforeend', `
   </section>
   <details class="spare-block settings"><summary>Current sensors & UV fault setup</summary><p class="help">Enable after CT installation. Set each calibration from measured amps ÷ CT signal volts, then set its running/minimum-current threshold. Zero leaves that channel unconfigured. UV monitoring only reports an electrical fault; it does not switch equipment off.</p><div class="setting-toggles"><button data-setting="ct_sampling_enabled">CT sampling · —</button><button data-setting="uv_current_monitoring">UV current monitoring · —</button></div><div class="settings-grid">${settingForms(healthSettings)}</div></details>
   </details>
-  <details class="panel settings"><summary>Flush schedules & settings</summary><p class="help">Schedules run locally. Enabling an Away schedule, changing its frequency, entering Away or rebooting starts a full interval. Duration changes apply to the next run.</p><h3>Normal</h3><div class="setting-toggles"><button data-setting="automatic_spin_flushing">Normal spin · —</button><button data-setting="automatic_system_flushing">Normal system · —</button></div><div class="settings-grid">${settingForms(numberSettings.slice(0,4))}</div><h3 class="settings-heading">Away</h3><div class="setting-toggles"><button data-setting="scheduled_away_flushing">Away system · —</button><button data-setting="scheduled_away_spin_flushing">Away spin · —</button></div><div class="settings-grid">${settingForms(numberSettings.slice(4))}</div></details>
+  <details class="panel settings" id="flush-settings"><summary>Flush schedules & settings</summary><p class="help">Four independent schedules: two for Normal and two for Away. Each has its own enable, timing and run time. System / UV means water flushing; UV lamp control is separate.</p>
+    <div class="flush-mode-heading"><h3>Normal mode</h3><p>Runs while Normal is selected and the pump is enabled.</p></div><div class="flush-settings-grid">${flushSchedules.filter(schedule=>schedule.mode === 'Normal').map(flushScheduleCard).join('')}</div>
+    <div class="flush-mode-heading settings-heading"><h3>Away mode</h3><p>Each run temporarily enables the pump. Tank and UV lamp stay off during the flush.</p></div><div class="flush-settings-grid">${flushSchedules.filter(schedule=>schedule.mode === 'Away').map(flushScheduleCard).join('')}</div>
+    <p class="small-note">Interval is the hours between flushes, adjustable from 1 to 24 hours. Run time is how long the valve stays open, in seconds. Schedules run on the A16, one valve at a time, and pause during bench testing.</p><p class="small-note">Enabling an Away schedule, changing its interval, entering Away or rebooting starts a full interval. Run-time edits apply to the next run. Disabling a schedule prevents future starts; use Cancel flush to stop a current run.</p>
+  </details>
   <details class="panel diagnostics"><summary>Equipment activity</summary><p class="help">CT-based estimates since restart. Samples are taken every 10 seconds; short cycles may be missed. Missing or uncalibrated current is unknown.</p><div class="schedule-grid">${['pump','tank'].map(load=>`<div class="schedule-card"><strong>${load === 'pump' ? 'Pump' : 'Hot water tank'}</strong><p id="${load}-activity">—</p><p id="${load}-usage">—</p></div>`).join('')}</div><div class="status-strip"><span>UV electrical check <strong id="uv-electrical">—</strong></span><span>UV current <strong id="uv-current">—</strong></span></div></details>
   <details class="panel diagnostics"><summary>Sensor readings</summary><p class="help">Pressure and current sensors are not installed yet. Missing readings are expected.</p><div class="status-strip"><span>Pressure <strong id="pressure">—</strong></span><span>Pressure loop <strong id="pressure-voltage">—</strong></span><span>Input communication <strong id="input-health">—</strong></span></div></details>
   <footer>Runs on the A16 · No Home Assistant connection required</footer>
@@ -111,9 +122,9 @@ const cabinTime = new Intl.DateTimeFormat('en-US',{timeZone:'America/Chicago',we
 function renderAwayPlan(online, testing, mode) {
   $('#away-plan').hidden = testing || mode !== 'Away';
   for (const kind of ['system','spin']) {
-    const frequency = numeric('number',kind === 'system' ? 'away_flushes_per_day' : 'away_spin_flushes_per_day');
+    const interval = numeric('number',`away_${kind}_flush_interval`);
     const run = numeric('number',kind === 'system' ? 'away_flush_duration' : 'away_spin_flush_duration');
-    $(`#away-${kind}-settings`).textContent = !online || !frequency || run === null ? '—' : `${frequency} / day · every ${24 / frequency} hours · run ${run < 60 ? `${run} seconds` : `${Math.floor(run / 60)}m ${run % 60}s`}`;
+    $(`#away-${kind}-settings`).textContent = !online || interval === null || run === null ? '—' : `Every ${interval} ${interval === 1 ? 'hour' : 'hours'} · run ${run < 60 ? `${run} seconds` : `${Math.floor(run / 60)}m ${run % 60}s`}`;
     const status = textState('text_sensor',`away_${kind}_schedule`);
     const sample = states.get(key('sensor',`away_${kind}_next_flush`));
     const remaining = seconds(`away_${kind}_next_flush`);
@@ -230,8 +241,10 @@ function render() {
   });
   document.querySelectorAll('[data-setting]').forEach(button => {
     const labels = {automatic_spin_flushing:'Normal spin',automatic_system_flushing:'Normal system',scheduled_away_flushing:'Away system',scheduled_away_spin_flushing:'Away spin',ct_sampling_enabled:'CT sampling',uv_current_monitoring:'UV current monitoring'};
-    button.disabled = !online || busy || bool('switch',button.dataset.setting) === null;
-    button.textContent = `${labels[button.dataset.setting]} · ${bool('switch',button.dataset.setting) ? 'On' : 'Off'}`;
+    const value = online ? bool('switch',button.dataset.setting) : null;
+    button.disabled = !online || busy || value === null;
+    button.textContent = `${button.dataset.label || labels[button.dataset.setting]} · ${value === null ? '—' : value ? 'On' : 'Off'}`;
+    button.setAttribute('aria-pressed', String(value === true));
   });
   document.querySelectorAll('[data-number]').forEach(form => {
     const input = form.querySelector('input');

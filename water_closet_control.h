@@ -138,7 +138,7 @@ class LocalSelectors {
   Selector pump_{Selector::OFF}, tank_{Selector::OFF};
 };
 
-// Away schedules use elapsed time. Enabling, changing frequency, entering Away,
+// Away schedules use elapsed time. Enabling, changing interval, entering Away,
 // or rebooting starts a full interval. Duration edits never move a deadline.
 class AwaySchedule {
  public:

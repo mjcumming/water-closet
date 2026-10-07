@@ -16,7 +16,9 @@ The dashboard puts mode and equipment status first. Manual controls stay visible
 
 Bench testing provides independent OUT1–16 toggles and live IN1–16 indicators. Automatic rules are bypassed only during that session. **All outputs off** clears every output. Leaving the test returns to Shutdown with all outputs off. A test session does not restore after reboot. Dashboard sources are `web/dashboard.js` and `web/dashboard.css`. Firmware endpoints are in `firmware/bench.yaml`.
 
-Away has separate system-water-exchange and spin-flush schedules, each with enable, one-to-four runs per day, and duration. Each run temporarily enables the Auto pump with the tank and UV off. If both are due, spin runs first. Door light patterns are in [DOOR_CONTROLS.md](DOOR_CONTROLS.md).
+Away has separate system-water-exchange and spin-flush schedules, each with enable, interval in hours, and run time in seconds. Each run temporarily enables the Auto pump with the tank and UV off. If both are due, spin runs first. Door light patterns are in [DOOR_CONTROLS.md](DOOR_CONTROLS.md).
+
+**Flush schedules & settings** shows four cards: Normal spin, Normal system/UV water flush, Away spin, and Away system/UV water flush. Every card uses **Interval (hours)**, adjustable from 1 to 24, followed by **Run time (seconds)**. Seconds allow the short three-second Normal UV refresh. The system/UV cards schedule water through the valve, not lamp switching. Hours are the native interval setting; no old-unit conversion or migration code is needed before commissioning. The latest update is local and awaiting upload; Mike requested no upload while the A16 is powered off.
 
 Current-transformer sampling and UV current monitoring are implemented and left off until the sensors are installed and calibrated. Missing sensors stay unknown. They are not treated as a dead-lamp alarm. See [DESIGN.md](DESIGN.md) and `firmware/health.yaml`.
 

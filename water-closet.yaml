@@ -197,11 +197,11 @@ script:
           cfg.system_duration_ms = uint32_t(id(system_duration).state * 1000);
           cfg.away_duration_ms = uint32_t(id(away_duration).state * 1000);
           cfg.away_spin_duration_ms = uint32_t(id(away_spin_duration).state * 1000);
-          cfg.away_spin_interval_ms = uint32_t(86400000.0f / id(away_spin_flushes_per_day).state);
+          cfg.away_spin_interval_ms = uint32_t(id(away_spin_interval_hours).state * 3600000);
           cfg.away_spin_auto = id(away_spin_auto_enabled).state;
-          cfg.spin_interval_ms = uint32_t(id(spin_interval).state * 60000);
-          cfg.system_interval_ms = uint32_t(id(system_interval).state * 60000);
-          cfg.away_interval_ms = uint32_t(86400000.0f / id(away_flushes_per_day).state);
+          cfg.spin_interval_ms = uint32_t(id(normal_spin_interval_hours).state * 3600000);
+          cfg.system_interval_ms = uint32_t(id(normal_system_interval_hours).state * 3600000);
+          cfg.away_interval_ms = uint32_t(id(away_system_interval_hours).state * 3600000);
           cfg.spin_auto = id(spin_auto_enabled).state;
           cfg.system_auto = id(system_auto_enabled).state;
           cfg.away_auto = id(away_auto_enabled).state;
